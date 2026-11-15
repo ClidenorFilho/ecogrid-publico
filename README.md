@@ -29,10 +29,24 @@ Abaixo estão definidos os atores e os sistemas/dispositivos externos que intera
 | **Serviço Externo de Mensageria de Alerta**                         | Sistema Externo (E-mail / SMS / Telegram API) | Realiza a entrega imediata de notificações críticas aos responsáveis técnicos.                                                                                               |
 
 ### 1.3. Funcionalidades Documentadas (Requisitos Funcionais)
-<!-- [ESPAÇO RESERVADO - : Inserir RF01 a RF05] -->
+
+| Requisito | Funcionalidade | Descrição |
+|:----------|:---------------|:----------|
+| **RF01** | **Coletar telemetria dos medidores e sensores IoT** | Receber leituras periódicas de potência (kW), consumo (kWh), tensão, corrente e temperatura das câmaras de vacinas, identificando a unidade, o circuito e o instante da medição. |
+| **RF02** | **Cadastrar e classificar unidades e circuitos** | Manter as escolas e UBS monitoradas e classificar cada circuito por criticidade — **Vital**, **Essencial** ou **Secundário/Ocioso** — para orientar as decisões de proteção e corte de carga. |
+| **RF03** | **Detectar anomalias e situações de risco** | Analisar as leituras recebidas, comparar os valores com os limites configurados e identificar sobrecargas, quedas de fase, consumo fora do horário e risco térmico em equipamentos de refrigeração. |
+| **RF04** | **Otimizar cargas e emitir alertas** | Ao detectar uma situação crítica, publicar o comando de *load shedding* para desligar circuitos não prioritários e enviar alertas à equipe de manutenção, preservando a alimentação dos circuitos vitais. |
+| **RF05** | **Disponibilizar acompanhamento e relatórios** | Permitir ao gestor acompanhar o consumo e o estado dos circuitos, consultar ocorrências e visualizar a economia gerada pelas ações de otimização. |
 
 ### 1.4. Resumo do Fluxo Principal
-<!-- [ESPAÇO RESERVADO - : Inserir resumo do fluxo principal] -->
+
+1. Os medidores inteligentes e sensores IoT instalados na escola ou UBS coletam uma nova leitura e a publicam via AMQP.
+2. O Serviço Core consome a mensagem, valida a unidade e o circuito e registra a telemetria para manter o histórico de acompanhamento.
+3. O caso de uso de processamento compara os valores com os limites configurados e classifica a ocorrência como normal, anômala ou crítica.
+4. Em uma situação crítica, o motor aplica a política de prioridade: mantém os circuitos **Vitais** e **Essenciais** e seleciona circuitos **Secundários/Ociosos** para o corte de carga.
+5. O sistema publica o comando de otimização para os relés inteligentes e o alerta para a equipe responsável.
+6. Os atuadores executam o desligamento remoto dos circuitos selecionados, enquanto o serviço de notificações comunica a ocorrência aos responsáveis.
+7. Após a estabilização, o gestor acompanha o estado atualizado, a ocorrência e a economia gerada no dashboard ou nos relatórios.
 
 ## 2. Estilos Arquiteturais Selecionados
 
