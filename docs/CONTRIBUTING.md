@@ -11,7 +11,7 @@ Este documento define o fluxo de trabalho da equipe no repositório do **EcoGrid
 | docs/nome-da-tarefa | Modelagem C4, README e ADRs | Criada a partir de develop |
 | feat/nome-da-tarefa | Código Core, Simulador e Infra | Criada a partir de develop |
 
-Como o projeto possui frentes de documentação arquitetural (Structurizr DSL e ADRs) e frentes de implementação parcial (Infra Docker, Simulador Python e Serviço Core em Spring Boot), utilize prefixos claros ao nomear sua branch[cite: 1, 2]:
+Como o projeto possui frentes de documentação arquitetural (Structurizr DSL e ADRs) e frentes de implementação parcial (Infra Docker, Simulador Python e Serviço Core em Spring Boot), utilize prefixos claros ao nomear sua branch:
 
 * **Documentação e C4:** `docs/c4-contexto-container`, `docs/c4-componentes-core`, `docs/adr-escolhas-arquiteturais`
 * **Infraestrutura e Mensageria:** `feat/infra-docker-rabbitmq`, `feat/infra-postgres-schema`
