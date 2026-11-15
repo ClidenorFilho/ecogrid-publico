@@ -9,7 +9,7 @@
 		<relativePath/> <!-- lookup parent from repository -->
 	</parent>
 	<groupId>br.ufc.quixada.arquitetura</groupId>
-	<artifactId>ecogrid-core</artifactId>
+	<artifactId>mobisocial-core</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
 	<name/>
 	<description/>

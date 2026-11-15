@@ -1,5 +1,5 @@
 ## Descrição
-<!-- Descreva brevemente o que este PR faz. Ex: Implementa o Consumer do RabbitMQ para detectar sobrecarga (RF03) -->
+<!-- Descreva brevemente o que este PR faz. Ex: Implementa o endpoint REST de agendamento de corrida (RF03) -->
 
 
 ## Tarefa / Requisito Relacionado
@@ -8,14 +8,14 @@
 
 ## Tipo de Mudança
 <!-- Marque a caixa apropriada com um 'x' -->
-- [ ] Nova funcionalidade (`feat`)
-- [ ] Correção de bug (`fix`)
-- [ ] Atualização de documentação (`docs`)
-- [ ] Refatoração (`refactor`)
-- [ ] Configuração / Manutenção (`chore`)
+- [ ] 🚀 Nova funcionalidade (`feat`)
+- [ ] 🐛 Correção de bug (`fix`)
+- [ ] 📚 Atualização de documentação (`docs`)
+- [ ] ♻️ Refatoração (`refactor`)
+- [ ] ⚙️ Configuração / Manutenção (`chore`)
 
 ## Como testar?
-<!-- Explique como o revisor pode rodar seu código. Ex: Subir o docker-compose, rodar o Spring Boot e rodar o script python -->
+<!-- Explique como o revisor pode testar seu código. Ex: Subir o docker-compose, iniciar o Spring Boot e enviar um POST via Postman/cURL -->
 1. 
 2. 
 

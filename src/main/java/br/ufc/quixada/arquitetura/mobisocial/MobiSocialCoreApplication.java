@@ -1,13 +1,13 @@
-package br.ufc.quixada.arquitetura.ecogrid;
+package br.ufc.quixada.arquitetura.mobisocial;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 @SpringBootApplication
-public class EcogridCoreApplication {
+public class MobiSocialCoreApplication {
 
 	public static void main(String[] args) {
-		SpringApplication.run(EcogridCoreApplication.class, args);
+		SpringApplication.run(MobiSocialCoreApplication.class, args);
 	}
 
 }
