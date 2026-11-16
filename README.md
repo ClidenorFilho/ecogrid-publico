@@ -67,14 +67,10 @@ Para atender aos requisitos do **Tema 13 (Aplicativo de Transporte e Mobilidade 
 O código-fonte da modelagem arquitetural encontra-se em [`/docs/c4/workspace.dsl`](./docs/c4/). As Decisões Arquiteturais (ADRs) estão documentadas em [`/docs/adr/`](./docs/adr/) e o guia de contribuição em [`/docs/CONTRIBUTING.md`](./docs/CONTRIBUTING.md).
 
 ### 3.1. C4 Nível 1: Diagrama de Contexto
-<!-- [ESPAÇO RESERVADO - DUPLA C: Cauan Ricardo e João Vitor]
-Inserir imagem exportada de /docs/c4 e parágrafo explicativo dos fluxos e protocolos.
--->
+![Diagrama de Contexto - C4 Nível 1](docs/c4/.structurizr/1/svgs/N1-Contexto-dark.svg)
 
 ### 3.2. C4 Nível 2: Diagrama de Container
-<!-- [ESPAÇO RESERVADO - DUPLA C: Cauan Ricardo e João Vitor]
-Inserir imagem exportada de /docs/c4 e parágrafo explicativo detalhando os containers e os protocolos (HTTPS, AMQP e JDBC).
--->
+![Diagrama de Container - C4 Nível 2](docs/c4/.structurizr/1/svgs/N2-Containers-dark.svg)
 
 ## 4. Guia Passo a Passo de Execução do Projeto
 
