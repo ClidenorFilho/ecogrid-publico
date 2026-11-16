@@ -69,8 +69,12 @@ O código-fonte da modelagem arquitetural encontra-se em [`/docs/c4/workspace.ds
 ### 3.1. C4 Nível 1: Diagrama de Contexto
 ![Diagrama de Contexto - C4 Nível 1](docs/c4/.structurizr/1/svgs/N1-Contexto-dark.svg)
 
+O Passageiro e o Motorista acessam o MobiSocial por **HTTPS**. Para processar cobranças e calcular rotas, o sistema chama o Gateway de Pagamentos e a API de Mapas, também por **HTTPS**.
+
 ### 3.2. C4 Nível 2: Diagrama de Container
 ![Diagrama de Container - C4 Nível 2](docs/c4/.structurizr/1/svgs/N2-Containers-dark.svg)
+
+O Front-end se comunica com o Serviço de Usuários e com o Serviço de Rotas e Corridas por **HTTPS/REST** (JSON). O Serviço de Rotas e Corridas consulta o perfil tarifário do passageiro no Serviço de Usuários por **HTTP/REST** e chama a API de Mapas por **HTTPS** para calcular rotas e distâncias. O processamento de pagamento e notificação é assíncrono: o Serviço de Rotas e Corridas publica um evento na fila `payments.process` do RabbitMQ, o Serviço de Pagamentos o consome, faz a cobrança no Gateway Externo por **HTTPS** e publica em `notifications.dispatch`, que o Serviço de Notificações consome. As mensagens entre esses serviços trafegam por **AMQP**, e os serviços gravam seus dados no PostgreSQL via **JDBC**.
 
 ## 4. Guia Passo a Passo de Execução do Projeto
 
