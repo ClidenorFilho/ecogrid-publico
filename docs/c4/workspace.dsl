@@ -1,111 +1,105 @@
-workspace "MobiSocial" "Arquitetura do Sistema de Transporte e Mobilidade Urbana Inclusiva" {
+workspace "MobiSocial" "Mobilidade urbana inclusiva - SOA + Event-Driven (Spring Boot)" {
 
     model {
-        # ==========================================
-        # 1. ATORES (PERSONS)
-        # ==========================================
-        passageiro = person "Passageiro" "Cidadão comum, Estudante ou Paciente de UBS que agenda corridas individuais ou compartilhadas e realiza pagamentos." "Person"
-        motorista = person "Motorista Parceiro" "Condutor credenciado que cadastra veículos, cria rotas urbanas e realiza o transporte dos passageiros." "Person"
+        passageiro = person "Passageiro" "Usuário comum, estudante ou paciente de UBS. Solicita, agenda e acompanha corridas." "Pessoa"
+        motorista = person "Motorista Parceiro" "Cadastra veículos, aceita rotas planejadas e transporta passageiros." "Pessoa"
 
-        # ==========================================
-        # 2. SISTEMAS EXTERNOS (EXTERNAL SYSTEMS)
-        # ==========================================
-        gatewayPagamento = softwareSystem "Gateway Externo de Pagamentos" "Processa cobranças eletrônicas (PIX, cartão) e validação de vouchers de tarifa social/estudantil." "External"
-        apiMapas = softwareSystem "Serviço Externo de Mapas e Geolocalização" "Fornece cálculo de distância, estimativa de tempo e validação de paradas da rota urbana." "External"
-        servicoPush = softwareSystem "Serviço Externo de Mensageria / Push" "Entrega notificações por E-mail, SMS ou Push aos passageiros e motoristas." "External"
+        gateway = softwareSystem "Gateway Externo de Pagamentos" "Processa cobranças, rateios e validação de vouchers sociais." "Externo"
+        mapas = softwareSystem "API de Mapas / Geolocalização" "Fornece distância, tempo estimado e traçado de rotas urbanas." "Externo"
 
-        # ==========================================
-        # 3. SISTEMA CENTRAL E CONTAINERS (C4 NÍVEL 2)
-        # ==========================================
-        mobisocial = softwareSystem "MobiSocial" "Plataforma de transporte e mobilidade urbana para criação de rotas, agendamento de corridas compartilhadas e gestão de pagamentos com rateio e tarifa social." {
+        mobisocial = softwareSystem "MobiSocial" "Plataforma de rotas, corridas compartilhadas e pagamentos com tarifa social." {
 
-            rideService = container "Serviço de Rotas e Corridas" "Gerencia cadastro de usuários/veículos, criação de rotas e agendamento de corridas compartilhadas via API REST (POST /api/rides)." "Java 17 e Spring Boot (REST API)" "Service"
+            frontend = container "Aplicação Front-end" "Interface para cadastro, login, solicitação de corridas e acompanhamento da viagem." "Web App (SPA)" "Frontend"
 
-            messageBroker = container "Message Broker" "Intermedia de forma assíncrona os eventos de corrida agendada (payments.process) e disparo de avisos (notifications.dispatch)." "RabbitMQ" "Queue"
+            userService = container "Serviço de Usuários" "Cadastro, login (emissão de JWT), perfis tarifários (comum, estudante, social) e regras de negócio de usuários e motoristas." "Spring Boot (REST)" "Servico"
 
-            paymentService = container "Serviço de Pagamentos e Rateio" "Consome eventos de corridas agendadas, calcula o rateio entre passageiros ou desconto de tarifa social e processa a cobrança." "Java 17 e Spring Boot (AMQP Worker)" "Service"
+            rideService = container "Serviço de Rotas e Corridas" "Cria rotas, agenda corridas, pareia passageiros e publica eventos. Valida o JWT recebido." "Spring Boot (REST)" "Servico"
 
-            notificationService = container "Serviço de Notificações" "Consome eventos de confirmação e dispara avisos de corrida agendada, motorista alocado e pagamento aprovado." "Java 17 e Spring Boot (AMQP Worker)" "Service"
+            broker = container "Message Broker" "Filas payments.process e notifications.dispatch." "RabbitMQ (AMQP)" "Broker"
 
-            database = container "Banco de Dados Relacional" "Armazena usuários, veículos, rotas planejadas, agendamentos de corridas e transações de pagamento." "PostgreSQL" "Database"
+            paymentService = container "Serviço de Pagamentos" "Consome corridas agendadas, calcula rateio/tarifa social e processa a cobrança." "Spring Boot (Worker)" "Servico"
+
+            notificationService = container "Serviço de Notificações" "Consome eventos finais e emite avisos de corrida e pagamento." "Spring Boot (Worker)" "Servico"
+
+            db = container "Banco de Dados" "Usuários, veículos, rotas, corridas e pagamentos (schema por serviço)." "PostgreSQL" "Database"
         }
 
-        # ==========================================
-        # 4. RELACIONAMENTOS E PROTOCOLOS
-        # ==========================================
-        # Interações dos Atores com o Serviço de Rotas e Corridas (REST)
-        passageiro -> rideService "Solicita agendamento de corrida compartilhada e consulta rotas (POST /api/rides)" "JSON/HTTPS"
-        motorista -> rideService "Cadastra veículo, cria rotas planejadas e consulta lista de embarque" "JSON/HTTPS"
+        # --- Nível 1: Contexto
+        passageiro -> mobisocial "Cadastra-se, solicita e acompanha corridas" "HTTPS"
+        motorista -> mobisocial "Cadastra veículos e aceita rotas" "HTTPS"
+        mobisocial -> gateway "Processa cobranças e vouchers" "HTTPS"
+        mobisocial -> mapas "Calcula rotas e distâncias" "HTTPS"
 
-        # Integrações do Serviço de Rotas e Corridas
-        rideService -> apiMapas "Consulta distância, estimativa de percurso e paradas da rota" "JSON/HTTPS"
-        rideService -> database "Lê e persiste usuários, veículos, rotas e agendamentos de corridas" "JDBC / Spring Data JPA"
-        rideService -> messageBroker "Publica evento de corrida agendada na fila payments.process" "AMQP"
+        # --- Nível 2: Containers
+        passageiro -> frontend "Usa" "HTTPS"
+        motorista -> frontend "Usa" "HTTPS"
 
-        # Fluxo Assíncrono do Serviço de Pagamentos e Rateio
-        messageBroker -> paymentService "Entrega evento da fila payments.process para cálculo de tarifa" "AMQP"
-        paymentService -> gatewayPagamento "Processa cobrança com rateio ou valida voucher de tarifa social" "JSON/HTTPS"
-        paymentService -> database "Persiste transação financeira e atualiza status do pagamento" "JDBC / Spring Data JPA"
-        paymentService -> messageBroker "Publica evento de pagamento aprovado na fila notifications.dispatch" "AMQP"
+        frontend -> userService "Cadastro e login (/api/users, /api/auth)" "HTTPS/REST (JSON)"
+        frontend -> rideService "Rotas e corridas (/api/rides, /api/routes)" "HTTPS/REST (JSON)"
 
-        # Fluxo Assíncrono do Serviço de Notificações
-        messageBroker -> notificationService "Entrega evento da fila notifications.dispatch" "AMQP"
-        notificationService -> servicoPush "Solicita disparo de aviso de viagem confirmada e recibo" "JSON/HTTPS"
-        servicoPush -> passageiro "Envia confirmação da corrida agendada e recibo tarifário" "Push / E-mail / SMS"
-        servicoPush -> motorista "Envia alerta de novo passageiro alocado na rota compartilhada" "Push / E-mail / SMS"
+        userService -> db "Lê e grava usuários e perfis" "JDBC"
+
+        rideService -> userService "Consulta perfil tarifário do passageiro" "HTTP/REST"
+        rideService -> mapas "Consulta rotas e distâncias" "HTTPS"
+        rideService -> db "Lê e grava rotas e corridas" "JDBC"
+        rideService -> broker "Publica evento em payments.process" "AMQP"
+
+        broker -> paymentService "Entrega payments.process" "AMQP"
+        paymentService -> db "Lê e grava pagamentos" "JDBC"
+        paymentService -> gateway "Cobra" "HTTPS"
+        paymentService -> broker "Publica evento em notifications.dispatch" "AMQP"
+
+        broker -> notificationService "Entrega notifications.dispatch" "AMQP"
+        notificationService -> db "Registra envios" "JDBC"
     }
 
     views {
-        # C4 Nível 1: Diagrama de Contexto do Sistema
-        systemContext mobisocial "C4_Nivel1_Contexto" {
+        systemContext mobisocial "N1-Contexto" "C4 Nível 1 - Diagrama de Contexto" {
             include *
-            autoLayout lr
-            description "Diagrama de Contexto (C4 Nível 1) do sistema MobiSocial, destacando atores e integrações externas."
+            autolayout lr
         }
 
-        # C4 Nível 2: Diagrama de Containers (SOA + Event-Driven)
-        container mobisocial "C4_Nivel2_Container" {
+        container mobisocial "N2-Containers" "C4 Nível 2 - Diagrama de Containers" {
             include *
-            autoLayout lr
-            description "Diagrama de Containers (C4 Nível 2) do MobiSocial detalhando os serviços SOA em Spring Boot, o RabbitMQ e o PostgreSQL."
+            autolayout lr
         }
 
         styles {
-            element "Person" {
+            element "Pessoa" {
                 shape Person
-                background "#08427B"
-                color "#FFFFFF"
+                background #08427b
+                color #ffffff
             }
             element "Software System" {
-                background "#1168BD"
-                color "#FFFFFF"
+                background #1168bd
+                color #ffffff
             }
-            element "External" {
-                background "#6C757D"
-                color "#FFFFFF"
+            element "Externo" {
+                background #8a8a8a
+                color #ffffff
             }
-            element "Container" {
-                background "#438DD5"
-                color "#FFFFFF"
+            element "Frontend" {
+                shape WebBrowser
+                background #0277bd
+                color #ffffff
             }
-            element "Service" {
-                shape RoundedBox
-                background "#2563EB"
-                color "#FFFFFF"
+            element "Servico" {
+                background #2e7d32
+                color #ffffff
             }
-            element "Queue" {
+            element "Broker" {
                 shape Pipe
-                background "#D97706"
-                color "#FFFFFF"
+                background #e65100
+                color #ffffff
             }
             element "Database" {
                 shape Cylinder
-                background "#059669"
-                color "#FFFFFF"
+                background #5e35b1
+                color #ffffff
             }
             relationship "Relationship" {
                 routing Orthogonal
-                thickness 2
+                fontSize 22
             }
         }
     }

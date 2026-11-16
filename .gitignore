@@ -31,3 +31,8 @@ build/
 
 ### VS Code ###
 .vscode/
+
+# Structurizr
+docs/c4/.structurizr/logs
+docs/c4/.structurizr/index
+docs/c4/workspace.json
