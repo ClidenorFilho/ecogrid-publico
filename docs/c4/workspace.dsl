@@ -15,11 +15,24 @@ workspace "MobiSocial" "Mobilidade urbana inclusiva - SOA + Event-Driven (Spring
 
             rideService = container "Serviço de Rotas e Corridas" "Cria rotas, agenda corridas, pareia passageiros e publica eventos. Valida o JWT recebido." "Spring Boot (REST)" "Servico"
 
-            broker = container "Message Broker" "Filas payments.process e notifications.dispatch." "RabbitMQ (AMQP)" "Broker"
+            broker = container "Message Broker" "Filas payments.process e notifications.dispatch." "RabbitMQ (AMQP)" "Broker" {
+                paymentsProcessQueue = component "payments.process" "Fila durável de eventos de corridas agendadas aguardando processamento financeiro (RideScheduledEvent)." "RabbitMQ Queue (AMQP)" "Fila"
+                notificationsDispatchQueue = component "notifications.dispatch" "Fila durável de eventos de pagamentos processados aguardando envio de aviso (PaymentProcessedEvent)." "RabbitMQ Queue (AMQP)" "Fila"
+            }
 
-            paymentService = container "Serviço de Pagamentos" "Consome corridas agendadas, calcula rateio/tarifa social e processa a cobrança." "Spring Boot (Worker)" "Servico"
+            paymentService = container "Serviço de Pagamentos" "Consome corridas agendadas, calcula rateio/tarifa social e processa a cobrança." "Spring Boot (Worker)" "Servico" {
+                paymentEventListener = component "PaymentEventListener" "Consome eventos RideScheduledEvent da fila payments.process e aciona o processamento financeiro." "Spring AMQP (@RabbitListener)" "Componente"
+                paymentServiceComp = component "PaymentService" "Calcula o rateio (carpooling), aplica descontos de tarifa social (estudante/UBS) e coordena cobrança, persistência e publicação de evento." "Spring Bean (@Service)" "Componente"
+                paymentGatewayClient = component "PaymentGatewayClient" "Integra-se via HTTPS com o Gateway Externo de Pagamentos para processar PIX, cartão ou voucher social." "Spring HTTP Client (@Component)" "Componente"
+                paymentRepository = component "PaymentRepository" "Persiste e consulta transações financeiras, rateios e subsídios no PostgreSQL." "Spring Data JPA (@Repository)" "Componente"
+                paymentEventPublisher = component "PaymentEventPublisher" "Publica o evento PaymentProcessedEvent na fila notifications.dispatch após aprovação da cobrança." "Spring AMQP (RabbitTemplate)" "Componente"
+            }
 
-            notificationService = container "Serviço de Notificações" "Consome eventos finais e emite avisos de corrida e pagamento." "Spring Boot (Worker)" "Servico"
+            notificationService = container "Serviço de Notificações" "Consome eventos finais e emite avisos de corrida e pagamento." "Spring Boot (Worker)" "Servico" {
+                notificationEventListener = component "NotificationEventListener" "Consome eventos PaymentProcessedEvent da fila notifications.dispatch e aciona a emissão de avisos." "Spring AMQP (@RabbitListener)" "Componente"
+                notificationServiceComp = component "NotificationService" "Formata e emite avisos de confirmação de corrida e pagamento aprovado para passageiro e motorista." "Spring Bean (@Service)" "Componente"
+                notificationRepository = component "NotificationRepository" "Registra o histórico de envios e status das notificações no PostgreSQL." "Spring Data JPA (@Repository)" "Componente"
+            }
 
             db = container "Banco de Dados" "Usuários, veículos, rotas, corridas e pagamentos (schema por serviço)." "PostgreSQL" "Database"
         }
@@ -51,6 +64,23 @@ workspace "MobiSocial" "Mobilidade urbana inclusiva - SOA + Event-Driven (Spring
 
         broker -> notificationService "Entrega notifications.dispatch" "AMQP"
         notificationService -> db "Registra envios" "JDBC"
+
+        # --- Nível 3: Componentes (Message Broker, Serviço de Pagamentos e Serviço de Notificações)
+        rideService -> paymentsProcessQueue "Publica RideScheduledEvent (payments.process)" "AMQP"
+
+        paymentsProcessQueue -> paymentEventListener "Entrega RideScheduledEvent (payments.process)" "AMQP"
+        paymentEventListener -> paymentServiceComp "Aciona cálculo de rateio/tarifa social e cobrança"
+        paymentServiceComp -> paymentGatewayClient "Solicita cobrança ou validação de voucher"
+        paymentGatewayClient -> gateway "Processa cobrança e vouchers" "HTTPS"
+        paymentServiceComp -> paymentRepository "Persiste transação e rateio"
+        paymentRepository -> db "Lê e grava pagamentos" "JDBC"
+        paymentServiceComp -> paymentEventPublisher "Solicita publicação do pagamento aprovado"
+        paymentEventPublisher -> notificationsDispatchQueue "Publica PaymentProcessedEvent (notifications.dispatch)" "AMQP"
+
+        notificationsDispatchQueue -> notificationEventListener "Entrega PaymentProcessedEvent (notifications.dispatch)" "AMQP"
+        notificationEventListener -> notificationServiceComp "Delega emissão do aviso de corrida e pagamento"
+        notificationServiceComp -> notificationRepository "Salva registro do envio"
+        notificationRepository -> db "Registra envios de notificações" "JDBC"
     }
 
     views {
@@ -60,6 +90,21 @@ workspace "MobiSocial" "Mobilidade urbana inclusiva - SOA + Event-Driven (Spring
         }
 
         container mobisocial "N2-Containers" "C4 Nível 2 - Diagrama de Containers" {
+            include *
+            autolayout lr
+        }
+
+        component broker "N3-Broker" "C4 Nível 3 - Filas do Message Broker (RabbitMQ)" {
+            include *
+            autolayout lr
+        }
+
+        component paymentService "N3-Pagamentos" "C4 Nível 3 - Componentes do Serviço de Pagamentos" {
+            include *
+            autolayout lr
+        }
+
+        component notificationService "N3-Notificacoes" "C4 Nível 3 - Componentes do Serviço de Notificações" {
             include *
             autolayout lr
         }
@@ -87,9 +132,18 @@ workspace "MobiSocial" "Mobilidade urbana inclusiva - SOA + Event-Driven (Spring
                 background #2e7d32
                 color #ffffff
             }
+            element "Componente" {
+                background #43a047
+                color #ffffff
+            }
             element "Broker" {
                 shape Pipe
                 background #e65100
+                color #ffffff
+            }
+            element "Fila" {
+                shape Pipe
+                background #fb8c00
                 color #ffffff
             }
             element "Database" {
