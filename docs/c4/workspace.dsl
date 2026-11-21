@@ -13,7 +13,17 @@ workspace "MobiSocial" "Mobilidade urbana inclusiva - SOA + Event-Driven (Spring
 
             userService = container "Serviço de Usuários" "Cadastro, login (emissão de JWT), perfis tarifários (comum, estudante, social) e regras de negócio de usuários e motoristas." "Spring Boot (REST)" "Servico"
 
-            rideService = container "Serviço de Rotas e Corridas" "Cria rotas, agenda corridas, pareia passageiros e publica eventos. Valida o JWT recebido." "Spring Boot (REST)" "Servico"
+            rideService = container "Serviço de Rotas e Corridas" "Cria rotas, agenda corridas, pareia passageiros e publica eventos. Valida o JWT recebido." "Spring Boot (REST)" "Servico" {
+                routeController = component "RouteController" "Expõe endpoints REST (/api/routes) para criação, consulta e gerenciamento de rotas oferecidas por motoristas." "Spring Web (@RestController)" "Componente"
+                rideController = component "RideController" "Expõe endpoints REST (/api/rides) para solicitação, agendamento e acompanhamento de corridas por passageiros." "Spring Web (@RestController)" "Componente"
+                rideServiceComp = component "RideService" "Orquestra as regras de negócio de rotas e corridas, coordena o pareamento e aciona persistência e publicação de eventos." "Spring Bean (@Service)" "Componente"
+                routeMatchingComponent = component "RouteMatchingComponent" "Executa a lógica de compatibilidade geográfica e de horários para parear passageiros e rotas disponíveis." "Spring Bean (@Component)" "Componente"
+                userServiceClient = component "UserServiceClient" "Consulta o Serviço de Usuários via HTTP/REST para validar perfis tarifários (comum, estudante, social) e cadastros." "Spring HTTP Client (@Component)" "Componente"
+                mapsClient = component "MapsClient" "Integra-se via HTTPS com a API de Mapas / Geolocalização para obter distância, tempo estimado e traçado de rotas." "Spring HTTP Client (@Component)" "Componente"
+                rideEventPublisher = component "RideEventPublisher" "Publica o evento RideScheduledEvent na fila payments.process do RabbitMQ após confirmar a corrida." "Spring AMQP (RabbitTemplate)" "Componente"
+                routeRepository = component "RouteRepository" "Persiste e consulta rotas planejadas e disponibilidade de vagas no PostgreSQL." "Spring Data JPA (@Repository)" "Componente"
+                rideRepository = component "RideRepository" "Persiste e consulta solicitações e agendamentos de corridas no PostgreSQL." "Spring Data JPA (@Repository)" "Componente"
+            }
 
             broker = container "Message Broker" "Filas payments.process e notifications.dispatch." "RabbitMQ (AMQP)" "Broker" {
                 paymentsProcessQueue = component "payments.process" "Fila durável de eventos de corridas agendadas aguardando processamento financeiro (RideScheduledEvent)." "RabbitMQ Queue (AMQP)" "Fila"
@@ -65,8 +75,29 @@ workspace "MobiSocial" "Mobilidade urbana inclusiva - SOA + Event-Driven (Spring
         broker -> notificationService "Entrega notifications.dispatch" "AMQP"
         notificationService -> db "Registra envios" "JDBC"
 
-        # --- Nível 3: Componentes (Message Broker, Serviço de Pagamentos e Serviço de Notificações)
-        rideService -> paymentsProcessQueue "Publica RideScheduledEvent (payments.process)" "AMQP"
+        # --- Nível 3: Componentes (Serviço de Rotas e Corridas, Message Broker, Serviço de Pagamentos e Serviço de Notificações)
+        frontend -> routeController "Cria e consulta rotas (/api/routes)" "HTTPS/REST (JSON)"
+        frontend -> rideController "Solicita e acompanha corridas (/api/rides)" "HTTPS/REST (JSON)"
+
+        routeController -> rideServiceComp "Delega criação e gestão de rotas"
+        rideController -> rideServiceComp "Delega agendamento e consulta de corridas"
+
+        rideServiceComp -> routeMatchingComponent "Solicita pareamento entre passageiro e rotas disponíveis"
+        routeMatchingComponent -> routeRepository "Consulta rotas ativas e vagas"
+
+        rideServiceComp -> userServiceClient "Solicita verificação de perfil tarifário e status do usuário"
+        userServiceClient -> userService "Consulta perfil tarifário do passageiro" "HTTP/REST"
+
+        rideServiceComp -> mapsClient "Solicita cálculo de distância, tempo e traçado"
+        mapsClient -> mapas "Consulta rotas e distâncias" "HTTPS"
+
+        rideServiceComp -> routeRepository "Persiste e atualiza rotas"
+        rideServiceComp -> rideRepository "Persiste e atualiza corridas"
+        routeRepository -> db "Lê e grava rotas" "JDBC"
+        rideRepository -> db "Lê e grava corridas" "JDBC"
+
+        rideServiceComp -> rideEventPublisher "Solicita publicação do evento de corrida agendada"
+        rideEventPublisher -> paymentsProcessQueue "Publica RideScheduledEvent (payments.process)" "AMQP"
 
         paymentsProcessQueue -> paymentEventListener "Entrega RideScheduledEvent (payments.process)" "AMQP"
         paymentEventListener -> paymentServiceComp "Aciona cálculo de rateio/tarifa social e cobrança"
@@ -90,6 +121,11 @@ workspace "MobiSocial" "Mobilidade urbana inclusiva - SOA + Event-Driven (Spring
         }
 
         container mobisocial "N2-Containers" "C4 Nível 2 - Diagrama de Containers" {
+            include *
+            autolayout lr
+        }
+
+        component rideService "N3-RotasCorridas" "C4 Nível 3 - Componentes do Serviço de Rotas e Corridas" {
             include *
             autolayout lr
         }

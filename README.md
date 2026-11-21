@@ -78,6 +78,11 @@ O Front-end se comunica com o Serviço de Usuários e com o Serviço de Rotas e 
 
 ### 3.3. C4 Nível 3: Diagramas de Componentes
 
+#### Serviço de Rotas e Corridas
+![Diagrama de Componentes - Serviço de Rotas e Corridas](docs/c4/.structurizr/1/svgs/n3/N3-RotasCorridas-dark.svg)
+
+O **Serviço de Rotas e Corridas** recebe requisições do **Front-end** via **HTTPS/REST** (JSON) nos controladores `RouteController` (`/api/routes`) e `RideController` (`/api/rides`), delegando as regras de negócio ao `RideService`. O `RideService` utiliza o `RouteMatchingComponent` para parear passageiros e rotas compatíveis, consulta o perfil tarifário no **Serviço de Usuários** via `UserServiceClient` (**HTTP/REST**), calcula rotas e distâncias na **API de Mapas / Geolocalização** via `MapsClient` (**HTTPS**), persiste rotas e corridas no **PostgreSQL** por meio de `RouteRepository` e `RideRepository` (**JDBC**) e publica o evento `RideScheduledEvent` na fila `payments.process` do **RabbitMQ** através do `RideEventPublisher` (**AMQP**).
+
 #### Message Broker (RabbitMQ — Filas AMQP)
 ![Diagrama de Componentes - Message Broker](docs/c4/.structurizr/1/svgs/n3/N3-Broker-dark.svg)
 
