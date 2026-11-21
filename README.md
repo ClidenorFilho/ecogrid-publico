@@ -24,39 +24,39 @@ Abaixo estão definidos os atores e os sistemas externos que interagem diretamen
 #### Sistemas Externos (*External Systems*)
 | Sistema Externo | Tipo | Principais Interações com o Sistema |
 |:----------------|:-----|:------------------------------------|
-| **Gateway Externo de Pagamentos** | Sistema Externo (API REST / HTTPS) | Processa a cobrança eletrônica das corridas (PIX, cartão de crédito ou validação de voucher estudantil/social). |
-| **Serviço Externo de Mapas e Geolocalização** | Sistema Externo (API REST / HTTPS) | Fornece cálculo de distância em quilômetros, estimativa de tempo de percurso e validação de paradas da rota urbana. |
-| **Serviço Externo de Mensageria / Push** | Sistema Externo (E-mail / SMS / Push API) | Realiza a entrega das notificações de confirmação de agendamento, alocação de motorista e recibo de pagamento aos usuários. |
+| **Gateway Externo de Pagamentos** | Sistema Externo (API REST / HTTPS) | Processa a cobrança eletrônica das corridas, rateios e validação de vouchers sociais. |
+| **API de Mapas / Geolocalização** | Sistema Externo (API REST / HTTPS) | Fornece cálculo de distância em quilômetros, estimativa de tempo de percurso e traçado de rotas urbanas. |
 
 ### 1.3. Funcionalidades Documentadas (Requisitos Funcionais)
 
 | Requisito | Funcionalidade | Descrição |
 |:----------|:---------------|:----------|
-| **RF01** | **Gerenciar usuários e veículos** | Cadastrar passageiros (identificando perfil comum, estudante ou tarifa social de saúde) e motoristas com seus respectivos veículos e capacidade máxima de assentos. |
-| **RF02** | **Criar e consultar rotas urbanas** | Permitir a criação de rotas contendo ponto de partida, paradas intermediárias, destino final, horário de saída e assentos disponíveis. |
-| **RF03** | **Agendar corridas e compartilhar veículos** | Receber solicitações de viagem via API REST, parear o passageiro com uma rota compatível respeitando o limite de assentos e confirmar a reserva compartilhada. |
-| **RF04** | **Processar pagamentos e rateio de tarifa** | Calcular o valor final da viagem aplicando a divisão de custos entre passageiros da mesma rota ou descontos de tarifa social e processar a transação financeira via evento assíncrono. |
-| **RF05** | **Notificar status de corridas e pagamentos** | Emitir avisos assíncronos ao passageiro e ao motorista sempre que uma corrida for agendada, a lotação do veículo for atualizada ou o pagamento for confirmado. |
+| **RF01** | **Gerenciar usuários, autenticação e veículos** | Cadastrar passageiros e motoristas no **Serviço de Usuários** (`/api/users`, `/api/auth`), realizar login com emissão de token **JWT**, definir perfis tarifários (`COMUM`, `ESTUDANTE`, `SOCIAL`) e gerenciar veículos e capacidade máxima de assentos. |
+| **RF02** | **Criar e consultar rotas urbanas** | Permitir a criação e consulta de rotas (`/api/routes`) contendo ponto de partida, paradas intermediárias, destino final, horário de saída e assentos disponíveis. |
+| **RF03** | **Agendar corridas e compartilhar veículos** | Receber solicitações autenticadas via API REST (`POST /api/rides`), validar o **JWT**, consultar o perfil tarifário do passageiro no **Serviço de Usuários**, consultar rotas e distâncias na **API de Mapas / Geolocalização**, parear o passageiro respeitando o limite de assentos e confirmar a reserva compartilhada. |
+| **RF04** | **Processar pagamentos e rateio de tarifa** | Calcular o valor final da viagem aplicando a divisão de custos entre passageiros da mesma rota ou descontos de tarifa social e processar a transação financeira via evento assíncrono (`payments.process`) integrando com o **Gateway Externo de Pagamentos**. |
+| **RF05** | **Notificar status de corridas e pagamentos** | Consumir eventos da fila `notifications.dispatch`, emitir avisos de confirmação de corrida e pagamento ao passageiro e ao motorista e registrar os envios no PostgreSQL. |
 
 ### 1.4. Resumo do Fluxo Principal
 
-1. O passageiro solicita o agendamento de uma corrida compartilhada enviando uma requisição HTTP (`POST /api/rides`) com origem, destino, rota desejada e modalidade de pagamento.
-2. O **Serviço de Rotas e Corridas** valida a disponibilidade de assentos na rota selecionada, atualiza a ocupação do veículo no banco de dados PostgreSQL e registra o agendamento com status `AGUARDANDO_PAGAMENTO`.
-3. Em seguida, o serviço publica um evento de corrida agendada na fila `payments.process` do RabbitMQ, liberando imediatamente a resposta HTTP para o usuário.
-4. O **Serviço de Pagamentos** consome o evento da fila `payments.process`, aplica a regra de rateio entre os passageiros (ou desconto de tarifa social), comunica-se com o Gateway de Pagamentos e salva a transação aprovada no PostgreSQL.
-5. Após aprovar a cobrança, o Serviço de Pagamentos publica um evento de confirmação na fila `notifications.dispatch` do RabbitMQ.
-6. O **Serviço de Notificações** consome o evento de confirmação e dispara o aviso final de viagem confirmada e recibo tarifário para o passageiro e para o motorista.
+1. O passageiro realiza o cadastro (`POST /api/users`) e o login (`POST /api/auth/login`) no **Serviço de Usuários**, obtendo um token **JWT** e mantendo seu perfil tarifário (`COMUM`, `ESTUDANTE` ou `SOCIAL`) persistido no PostgreSQL.
+2. Em seguida, o passageiro envia uma requisição HTTP autenticada (`POST /api/rides`) com o cabeçalho `Authorization: Bearer <TOKEN_JWT>` ao **Serviço de Rotas e Corridas** (também responsável pelos endpoints `/api/routes`), informando a rota desejada, se é corrida compartilhada e o método de pagamento.
+3. O **Serviço de Rotas e Corridas** valida o JWT recebido, consulta via HTTP/REST o perfil tarifário do passageiro no **Serviço de Usuários**, consulta via HTTPS rotas e distâncias na **API de Mapas / Geolocalização**, verifica a disponibilidade de assentos, persiste o agendamento no PostgreSQL com status `AGUARDANDO_PAGAMENTO` e publica um evento na fila `payments.process` do RabbitMQ, liberando imediatamente a resposta HTTP.
+4. O **Serviço de Pagamentos** consome o evento da fila `payments.process`, aplica a regra de rateio entre passageiros (ou desconto de tarifa social), executa a cobrança via HTTPS no **Gateway Externo de Pagamentos** e salva a transação no PostgreSQL.
+5. Após aprovar a cobrança, o **Serviço de Pagamentos** publica um evento na fila `notifications.dispatch` do RabbitMQ.
+6. O **Serviço de Notificações** consome o evento da fila `notifications.dispatch`, emite o aviso final de corrida e pagamento confirmado e registra os envios no PostgreSQL.
 
 ## 2. Estilos Arquiteturais Selecionados
 
 Para atender aos requisitos do **Tema 13 (Aplicativo de Transporte e Mobilidade Urbana)**, o projeto combina dois estilos arquiteturais:
 
 ### 2.1. Arquitetura Orientada a Serviços (SOA — Service-Oriented Architecture)
-- **Aplicação no Sistema:** O back-end em **Spring Boot** é decomposto em três serviços modulares orientados a capacidades de negócio independentes:
-  * **Serviço de Rotas e Corridas (`RideService`):** Responsável pelo cadastro de trajetos, controle de capacidade dos veículos e agendamento de corridas compartilhadas via API REST (`RideController`, `RideService`, `RouteRepository`, `RideRepository`).
-  * **Serviço de Pagamentos e Tarifas (`PaymentService`):** Responsável pelo cálculo de divisão tarifária (*carpooling*), aplicação de subsídio social e integração financeira (`PaymentEventListener`, `PaymentService`, `PaymentRepository`).
-  * **Serviço de Notificações (`NotificationService`):** Responsável pela formatação e envio de alertas de status de viagem e confirmação de embarque (`NotificationEventListener`, `NotificationService`).
-- **Justificativa Arquitetural:** A abordagem **SOA** permite separar claramente as regras de mobilidade urbana (rotas e lotação) das regras financeiras (pagamentos e vouchers) e de comunicação, garantindo baixo acoplamento, alta coesão e facilidade de manutenção por duplas em paralelo.
+- **Aplicação no Sistema:** Além da **Aplicação Front-end** (`Web App (SPA)`) modelada no C4 Nível 2 — que consome as APIs REST `/api/users`, `/api/auth`, `/api/rides` e `/api/routes` —, o back-end em **Spring Boot** é decomposto em **quatro serviços modulares** orientados a capacidades de negócio independentes, apoiados pelos pacotes transversais `config` (`RabbitMQConfig`, `SecurityConfig`) e `event` (contratos JSON AMQP) e pelo banco **PostgreSQL** (com previsão de schema por serviço conforme o C4 Nível 2):
+  * **Serviço de Usuários (`userService` — pacote `user`):** Responsável pelo cadastro de usuários e motoristas/veículos, login com emissão de JWT e gerenciamento dos perfis tarifários (`COMUM`, `ESTUDANTE`, `SOCIAL`) via API REST (`AuthController`, `UserController`, `AuthService`, `UserService`, `UserRepository`).
+  * **Serviço de Rotas e Corridas (`rideService` — pacote `ride`):** Responsável pelo cadastro de trajetos (`/api/routes`), controle de capacidade dos veículos, agendamento de corridas compartilhadas (`/api/rides`), validação de JWT, consulta de perfil tarifário e geolocalização, e publicação de eventos (`RouteController`, `RideController`, `RideService`, `RouteMatchingComponent`, `UserServiceClient`, `MapsClient`, `RideEventPublisher`, `RouteRepository`, `RideRepository`).
+  * **Serviço de Pagamentos (`paymentService` — pacote `payment`):** Responsável pelo consumo da fila `payments.process`, cálculo de divisão tarifária (*carpooling*), aplicação de subsídio social, cobrança no gateway externo e publicação na fila `notifications.dispatch` (`PaymentEventListener`, `PaymentService`, `PaymentGatewayClient`, `PaymentRepository`, `PaymentEventPublisher`).
+  * **Serviço de Notificações (`notificationService` — pacote `notification`):** Responsável pelo consumo da fila `notifications.dispatch`, emissão de avisos de corrida e pagamento e registro dos envios no PostgreSQL (`NotificationEventListener`, `NotificationService`, `NotificationRepository`).
+- **Justificativa Arquitetural:** A abordagem **SOA** permite separar claramente as regras de identidade e perfis tarifários (usuários), mobilidade urbana (rotas e lotação), regras financeiras (pagamentos e vouchers) e avisos (notificações), garantindo baixo acoplamento, alta coesão e facilidade de manutenção por duplas em paralelo.
 
 ### 2.2. Arquitetura Baseada em Eventos (Event-Driven Architecture)
 - **Aplicação no Sistema:** A comunicação entre os serviços SOA após a solicitação da corrida ocorre de forma totalmente assíncrona por meio do **RabbitMQ** (protocolo `AMQP`), utilizando as filas `payments.process` e `notifications.dispatch`.
@@ -64,7 +64,7 @@ Para atender aos requisitos do **Tema 13 (Aplicativo de Transporte e Mobilidade 
 
 ## 3. Documentação Arquitetural (Modelo C4 - Structurizr)
 
-O código-fonte da modelagem arquitetural encontra-se em [`/docs/c4/workspace.dsl`](./docs/c4/). As Decisões Arquiteturais (ADRs) estão documentadas em [`/docs/adr/`](./docs/adr/) e o guia de contribuição em [`/docs/CONTRIBUTING.md`](./docs/CONTRIBUTING.md).
+O código-fonte da modelagem arquitetural encontra-se em [`/docs/c4/workspace.dsl`](./docs/c4/workspace.dsl). As Decisões Arquiteturais (ADRs) estão documentadas em [`/docs/adr/`](./docs/adr/) e o guia de contribuição em [`/docs/CONTRIBUTING.md`](./docs/CONTRIBUTING.md).
 
 ### 3.1. C4 Nível 1: Diagrama de Contexto
 ![Diagrama de Contexto - C4 Nível 1](docs/c4/.structurizr/1/svgs/N1-Contexto-dark.svg)
@@ -99,16 +99,40 @@ Na raiz do repositório, inicie os serviços do MobiSocial utilizando o Maven Wr
 ./mvnw spring-boot:run
 ```
 
-### 4.3. Testar o Fluxo Principal (Agendamento + Evento de Pagamento + Notificação)
-Com a aplicação rodando na porta `8080`, envie uma requisição `POST` pelo Postman ou via terminal (`curl`) para agendar uma corrida compartilhada e acionar a cadeia de eventos no RabbitMQ:
+### 4.3. Testar o Fluxo Principal (Usuários/JWT + Agendamento + Evento de Pagamento + Notificação)
+Com a aplicação rodando na porta `8080`, execute as requisições abaixo pelo Postman, Insomnia ou via terminal (`curl`) para cadastrar um passageiro no **Serviço de Usuários**, autenticar-se para obter o token **JWT** e agendar uma corrida compartilhada no **Serviço de Rotas e Corridas** (que valida o JWT, consulta o perfil tarifário do passageiro no **Serviço de Usuários** e publica o evento na fila `payments.process`):
+
+1. **Cadastrar passageiro com perfil tarifário (`POST /api/users`):**
+```bash
+curl -X POST http://localhost:8080/api/users \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Ana Silva",
+    "email": "ana@alu.ufc.br",
+    "password": "senha-segura",
+    "tariffProfile": "ESTUDANTE"
+  }'
+```
+
+2. **Autenticar usuário para obter o token JWT (`POST /api/auth/login`):**
+```bash
+curl -X POST http://localhost:8080/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "ana@alu.ufc.br",
+    "password": "senha-segura"
+  }'
+```
+
+3. **Agendar corrida compartilhada com JWT (`POST /api/rides`):**
 ```bash
 curl -X POST http://localhost:8080/api/rides \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <TOKEN_JWT>" \
   -d '{
     "passengerId": 1,
     "routeId": 10,
     "sharedRide": true,
-    "tariffType": "ESTUDANTE",
     "paymentMethod": "PIX"
   }'
 ```
@@ -122,9 +146,9 @@ curl -X POST http://localhost:8080/api/rides \
 | **Etapa 1** | 16/11 | **Dupla A:** Felipe Maia e Clidenor | Repositório GitHub e Estilos | Criar repo, adicionar equipe, estruturar pastas (`/docs/c4`, `/docs/adr`, `/src`), justificar SOA + Event-Driven no `README.md`, guia de execução e importar dependências do Spring Boot. |
 | **Etapa 1** | 16/11 | **Dupla B:** Pablo e Maria | Escopo MobiSocial e Requisitos | Documentar o problema de Mobilidade Urbana, atores, funcionalidades (RF01-RF05) e fluxo principal no `README.md`. |
 | **Etapa 1** | 16/11 | **Dupla C:** Cauan Ricardo e João Vitor | Diagramas C4 Níveis 1 e 2 | Configurar Structurizr DSL (`workspace.dsl`) e gerar os diagramas de Contexto e Container alinhados ao `README.md`. |
-| **Etapa 2** | 23/11 | **Dupla A:** Felipe Maia e Clidenor | C4 Nível 3 (Pagamentos/Eventos) | Modelar os componentes internos do Serviço de Pagamentos, filas do RabbitMQ (`payments.process` e `notifications.dispatch`) e Serviço de Notificações. |
-| **Etapa 2** | 23/11 | **Dupla B:** Pablo e Maria | C4 Nível 3 (Rotas e Corridas) | Modelar os componentes internos do Serviço de Rotas e Corridas (`RideController`, `RideService`, `RouteMatchingComponent`, `RideRepository`). |
-| **Etapa 2** | 23/11 | **Dupla C:** Cauan Ricardo e João Vitor | C4 Nível 4 (Código) e ADRs | Modelar o diagrama de classes do fluxo de agendamento/rateio e redigir as Decisões Arquiteturais (ADRs 01, 02 e 03) em `/docs/adr`. |
-| **Etapa 3** | 01/12 | **Dupla A:** Felipe Maia e Clidenor | Infra Docker e Pagamentos | Subir Docker Compose (RabbitMQ + PostgreSQL), configurar filas AMQP no Spring Boot e implementar o Serviço de Pagamentos (`PaymentEventListener` e `PaymentService`). |
-| **Etapa 3** | 01/12 | **Dupla B:** Pablo e Maria | Serviço de Rotas e Corridas | Implementar o endpoint REST (`POST /api/rides`), lógica de alocação em rota compartilhada e publicação de evento no RabbitMQ em conformidade com os níveis 3 e 4. |
-| **Etapa 3** | 01/12 | **Dupla C:** Cauan Ricardo e João Vitor | Notificações, Conformidade e Slides | Implementar consumidor de notificações (`NotificationEventListener`), auditar conformidade código x Structurizr e preparar apresentação. |
+| **Etapa 2** | 23/11 | **Dupla A:** Felipe Maia e Clidenor | C4 Nível 3 (Pagamentos e Notificações) | Modelar os componentes internos do **Serviço de Pagamentos** (`PaymentEventListener`, `PaymentService`, `PaymentGatewayClient`, `PaymentRepository`, `PaymentEventPublisher`), filas do RabbitMQ (`payments.process` e `notifications.dispatch`) e **Serviço de Notificações** (`NotificationEventListener`, `NotificationService`, `NotificationRepository`). |
+| **Etapa 2** | 23/11 | **Dupla B:** Pablo e Maria | C4 Nível 3 (Usuários, Rotas e Corridas) | Modelar os componentes internos do **Serviço de Usuários** (`AuthController`, `UserController`, `AuthService`, `UserService`, `UserRepository`) e do **Serviço de Rotas e Corridas** (`RouteController`, `RideController`, `RideService`, `RouteMatchingComponent`, `UserServiceClient`, `MapsClient`, `RideEventPublisher`, `RouteRepository`, `RideRepository`). |
+| **Etapa 2** | 23/11 | **Dupla C:** Cauan Ricardo e João Vitor | C4 Nível 4 (Código) e ADRs | Modelar o diagrama de classes do fluxo principal (autenticação/agendamento/rateio) e redigir as Decisões Arquiteturais (ADRs 01, 02 e 03) em `/docs/adr`. |
+| **Etapa 3** | 01/12 | **Dupla A:** Felipe Maia e Clidenor | Infra Docker e Pagamentos | Subir Docker Compose (RabbitMQ + PostgreSQL), configurar filas AMQP (`RabbitMQConfig`) e implementar o **Serviço de Pagamentos** (`PaymentEventListener`, `PaymentService`, `PaymentGatewayClient`, `PaymentRepository`, `PaymentEventPublisher`). |
+| **Etapa 3** | 01/12 | **Dupla B:** Pablo e Maria | Serviços de Usuários, Rotas e Corridas | Implementar o **Serviço de Usuários** (`/api/users`, `/api/auth` com JWT e perfis tarifários) e o **Serviço de Rotas e Corridas** (`/api/routes`, `POST /api/rides`, validação de JWT, consulta ao Serviço de Usuários, alocação em rota compartilhada e publicação de evento em `payments.process`). |
+| **Etapa 3** | 01/12 | **Dupla C:** Cauan Ricardo e João Vitor | Notificações, Conformidade e Slides | Implementar o **Serviço de Notificações** (`NotificationEventListener`, `NotificationService`, `NotificationRepository`), auditar conformidade código x Structurizr e preparar apresentação. |
