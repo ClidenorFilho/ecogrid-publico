@@ -76,6 +76,23 @@ O Passageiro e o Motorista acessam o MobiSocial por **HTTPS**. Para processar co
 
 O Front-end se comunica com o Serviço de Usuários e com o Serviço de Rotas e Corridas por **HTTPS/REST** (JSON). O Serviço de Rotas e Corridas consulta o perfil tarifário do passageiro no Serviço de Usuários por **HTTP/REST** e chama a API de Mapas por **HTTPS** para calcular rotas e distâncias. O processamento de pagamento e notificação é assíncrono: o Serviço de Rotas e Corridas publica um evento na fila `payments.process` do RabbitMQ, o Serviço de Pagamentos o consome, faz a cobrança no Gateway Externo por **HTTPS** e publica em `notifications.dispatch`, que o Serviço de Notificações consome. As mensagens entre esses serviços trafegam por **AMQP**, e os serviços gravam seus dados no PostgreSQL via **JDBC**.
 
+### 3.3. C4 Nível 3: Diagramas de Componentes
+
+#### Message Broker (RabbitMQ — Filas AMQP)
+![Diagrama de Componentes - Message Broker](docs/c4/.structurizr/1/svgs/n3/N3-Broker-dark.svg)
+
+O Message Broker organiza o fluxo assíncrono em duas filas duráveis via **AMQP**: `payments.process`, que recebe o evento `RideScheduledEvent` do **Serviço de Rotas e Corridas** e o entrega ao **Serviço de Pagamentos**, e `notifications.dispatch`, que recebe o evento `PaymentProcessedEvent` do **Serviço de Pagamentos** e o entrega ao **Serviço de Notificações**.
+
+#### Serviço de Pagamentos
+![Diagrama de Componentes - Serviço de Pagamentos](docs/c4/.structurizr/1/svgs/n3/N3-Pagamentos-dark.svg)
+
+O `PaymentEventListener` consome o evento `RideScheduledEvent` da fila `payments.process` (**AMQP**) e aciona o `PaymentService`, responsável pelo cálculo de rateio (*carpooling*) e aplicação de tarifa social (estudante/UBS). O `PaymentService` solicita a cobrança ao **Gateway Externo de Pagamentos** via `PaymentGatewayClient` (**HTTPS**), persiste a transação no **PostgreSQL** via `PaymentRepository` (**JDBC**) e dispara o evento `PaymentProcessedEvent` na fila `notifications.dispatch` por meio do `PaymentEventPublisher` (**AMQP**).
+
+#### Serviço de Notificações
+![Diagrama de Componentes - Serviço de Notificações](docs/c4/.structurizr/1/svgs/n3/N3-Notificacoes-dark.svg)
+
+O `NotificationEventListener` consome o evento `PaymentProcessedEvent` da fila `notifications.dispatch` (**AMQP**) e delega ao `NotificationService` a formatação e emissão dos avisos de corrida e pagamento aprovado. Em seguida, o `NotificationRepository` grava o histórico de envios no **PostgreSQL** via **JDBC**.
+
 ## 4. Guia Passo a Passo de Execução do Projeto
 
 > *Nota: Os comandos abaixo descrevem o procedimento completo de execução da implementação parcial do fluxo principal em Spring Boot.*
